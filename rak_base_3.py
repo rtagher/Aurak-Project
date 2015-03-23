@@ -43,7 +43,7 @@ class Card(object):
         else:
             return self.face()
 
-    
+
 class DurakDeck(object):
 
     ranks = range(2,15)
@@ -89,11 +89,11 @@ class DurakDeck(object):
                 string += '\n'
             count += 1
         return string
-            
+
     def get_size(self):
         return len(self.cards)
 
-        
+
 class Player(object):
 
     def __init__(self, index, draw_to):
@@ -192,7 +192,7 @@ class Player(object):
             else:
                 return cmp(s1, s2)
         self.hand = sorted(self.hand, cmp = compare_cards_rank)
-            
+
     def add_card(self, card):
         self.hand.append(card)
         self.sort_hand()
@@ -256,7 +256,7 @@ class Player(object):
                 if input_index in range(1, len(self.hand) + 1):
                     return self.hand[input_index - 1]
                 else:
-                    print ('Error: player %d has fewer than %d cards' % 
+                    print ('Error: player %d has fewer than %d cards' %
                            (self.index + 1, input_index))
                     continue
 
@@ -308,7 +308,8 @@ class Player(object):
 
 class Table(object):
 
-    def __init__(self, player_count = 4, cards_per_player = 13, initial_attacker = None):
+    def __init__(self, player_count = 4, cards_per_player = 13,
+                 initial_attacker = None):
         self.attacks = []
         self.defenses = []
         self.attackers = []
@@ -365,7 +366,7 @@ class Table(object):
             (defense.suit != bot and attack.suit == bot)):
             return True
         return False
-        
+
     def trump_validity(self, trump, defense = None):
         if trump == self.bot_card.suit:
             print 'Trump and bitch cannot be the same suit.'
@@ -464,7 +465,7 @@ class Table(object):
                 self.add_defense(defense)
                 defender.remove_card(defense)
                 return ''
-                
+
     def end_condition(deck, player_list):
         if len(deck.cards) > 0:
             return False
@@ -473,7 +474,7 @@ class Table(object):
                 if len(player.hand) > 0:
                     return False
             return True
-            
+
     def add_attack(self, card):
         self.attacks.append(card)
 
@@ -483,7 +484,7 @@ class Table(object):
     def clear(self):
         self.attacks = []
         self.defenses = []
-        
+
     def discard_all(self):
         self.discard_pile.extend(self.attacks + self.defenses)
         self.clear()
@@ -502,8 +503,8 @@ class Table(object):
         string += ' ' * (4 * (num_cards - len(self.defenses)))
         return string
 
-    
-def print_board(deck, table, player_list, cards_per_row, defender = None, 
+
+def print_board(deck, table, player_list, cards_per_row, defender = None,
                 mode = 'list'):
 
     if mode == 'list':
@@ -718,10 +719,10 @@ def print_board(deck, table, player_list, cards_per_row, defender = None,
     line += ' ' * 10
     line += '\n'
     print line
-    
+
 
 if __name__ == "__main__":
-    
+
     table = Table()
     print_mode = 'grid'
     print_suits_as_symbols = True
@@ -761,7 +762,7 @@ if __name__ == "__main__":
             player_list[i].hand.pop(0)'''
     print_board(table.durak, table, player_list, cards_per_row, None, print_mode)
     ## table.play_game with special_suit = 3
-    
+
     while True:
         out_list = []
         table.initial_attacker = table.find_initial_attacker(table.player_list,
@@ -779,6 +780,7 @@ if __name__ == "__main__":
                     break
                 print 'Not a valid bid. Try again.'
             table.bid_list.append(bid)
+        ## table.assign_trump_orders
         ## assign trump orders for each player
         for i in range(len(table.player_count)):
             player = table.player_list[(table.attacker.index + i) % table.player_count]
@@ -794,6 +796,7 @@ if __name__ == "__main__":
             player.initial_hand_length = len(player.hand)
         ## table.play_phase
         while True:
+            ## table.initialize_turn
             table.attackers = []
             table.attack_count = 0
             for player in table.player_list:
@@ -805,6 +808,7 @@ if __name__ == "__main__":
             max_attacks = min(table.defender.initial_hand_length,
                               len(table.defender.hand),
                               table.defender.trump_card.rank)
+            ## table.play_turn
             while (table.attack_count < max_attacks and
                    any((a.status == 'active') for a in table.player_list if
                        a != table.defender)):
@@ -822,13 +826,14 @@ if __name__ == "__main__":
                     message = ''
                 ## Ask attacker for his move and record whether to prompt for
                 ## a defense
-                (prompt_for_defense,
+                (need_defense,
                  table.attacker, message) = table.process_attack(table.player_list,
                                                                  table.attacker,
                                                                  table.defender,
                                                                  message)
-                if prompt_for_defense == False:
+                if need_defense == False:
                     continue
+                ## table.execute_defense
                 ## If defense is required, reset all passed players to active
                 for player in table.player_list:
                     if player.status == 'pass':
@@ -846,7 +851,7 @@ if __name__ == "__main__":
                 for p in table.player_list:
                     if p.status == 'pass' and p != table.defender:
                         p.status = 'active'
-            ## Attack is over, take/discard cards + draw + pass initiative                
+            ## Attack is over, take/discard cards + draw + pass initiative
             ## First, attackers draw cards
             print_board(table.durak, table, player_list, cards_per_row, table.defender,
                         print_mode)
@@ -905,7 +910,7 @@ if __name__ == "__main__":
         for card in team02_cards_won:
             if card.suit in team02_suits_bid:
                 team13_score += 1
-        
+
         team13_cards_won = table.player_list[1].cards_won + table.player_list[3].cards_won
         team13_suits_bid = [player.trump for player in
                             [table.player_list[1], table.player_list[3]]]
@@ -922,7 +927,7 @@ if __name__ == "__main__":
                                           suit_symbols[table.bid_list[2].suit],
                                           team02_score))
         if team02_score >= table.bid_list[0].rank + table.bid_list[2].rank:
-            print 'Success!'    
+            print 'Success!'
             table.player_list[0].bids_won.append(table.player_list[0].trump_card)
             table.player_list[2].bids_won.append(table.player_list[2].trump_card)
         else:
@@ -936,19 +941,17 @@ if __name__ == "__main__":
                                           table.bid_list[2].rank,
                                           suit_symbols[table.bid_list[0].suit],
                                           suit_symbols[table.bid_list[2].suit],
-                                          team02_score))                               
+                                          team02_score))
         if team13_score >= table.bid_list[1].rank + table.bid_list[3].rank:
-            print 'Success!'    
+            print 'Success!'
             table.player_list[1].bids_won.append(table.player_list[1].trump_card)
             table.player_list[3].bids_won.append(table.player_list[3].trump_card)
         else:
             print 'Failure.'
             table.durak.append(player_list[1].trump_card)
-            table.durak.append(player_list[3].trump_card)                               
+            table.durak.append(player_list[3].trump_card)
 
         print 'PLAYER WINNINGS'
         for player in table.player_list:
-            line = 'Player %d: %s' (player.index, player.print_bids_won)      
+            line = 'Player %d: %s' (player.index, player.print_bids_won)
         raw_input('Press Enter to continue. ')
-
-
