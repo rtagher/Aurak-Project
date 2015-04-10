@@ -4,7 +4,8 @@ from itertools import product
 ##suit_symbols = {0: u'\u2663', 1: u'\u2666', 2: u'\u2665', 3: u'\u2660'}
 ##suit_symbols = {0: u'\u2667', 1: u'\u2662', 2: u'\u2661', 3: u'\u2664'}
 ##suit_symbols = {0: u'\u2663', 1: u'\u2662', 2: u'\u2661', 3: u'\u2660'}
-suit_symbols = {0: u'\u2667', 1: u'\u2666', 2: u'\u2665', 3: u'\u2664'}
+suit_symbols = {0: u'\u2667'.encode('utf-8'), 1: u'\u2666'.encode('utf-8'),
+                2: u'\u2665'.encode('utf-8'), 3: u'\u2664'.encode('utf-8')}
 suit_letters = {0: 'c', 1: 'd', 2: 'h', 3: 's'}
 rank_symbols = {2: '2', 3: '3', 4: '4', 5: '5', 6: '6', 7: '7', 8: '8',
                 9: '9', 10: '10', 11: 'J', 12: 'Q', 13: 'K', 14: 'A'}
@@ -31,17 +32,18 @@ class Card(object):
     def get_value(self):
         return (self.rank - 2) + 13 * self.suit
 
-    def display_count(self):
+    def print_count(self):
         print 'Number of cards: %s' % Card.cardCount
 
-    def display_card(self):
+    def print_info(self):
         print 'Rank: %s Suit: %s' % (self.rank, self.suit)
 
-    def print_face(self):
-        if len(self.face()) == 2:
-            return self.face() + ' '
+    def get_face(self):
+        face = self.face()
+        if len(face) == 2:
+            return face + ' '
         else:
-            return self.face()
+            return face
 
 
 class DurakDeck(object):
@@ -96,18 +98,19 @@ class DurakDeck(object):
 
 class Player(object):
 
-    def __init__(self, index, draw_to):
+    def __init__(self, index, draw_length):
 
         self.index = index
         self.hand = []
+        self.deck = []
         self.bids_won = []
         self.cards_won = []
         self.trump_card = None
         self.trump = 3
         self.suit_order = []
         self.status = 'active'
-        self.draw_to = draw_to
-        self.initial_hand_length = 13
+        self.draw_length = draw_length
+        self.initial_draw_length = 13
 
     def reset_status(self):
         self.status = 'active'
@@ -260,11 +263,19 @@ class Player(object):
                            (self.index + 1, input_index))
                     continue
 
-    def draw(self, deck):
+    def draw_from_deck(self, deck):
         if len(deck.cards) <= self.draw_to - len(self.hand):
             self.extend_hand(deck.draw_cards(len(deck.cards)))
         else:
             self.extend_hand(deck.draw_cards(self.draw_to - len(self.hand)))
+
+    def draw(self):
+        while len(self.hand) < self.draw_length:
+            if len(self.deck) == 0:
+                break
+            self.hand.append(self.deck.pop(0))
+        self.sort_hand_suit_order()
+        return
 
     def print_hand_faces(self):
         for card in self.hand:
@@ -318,7 +329,7 @@ class Player(object):
 
 class Table(object):
 
-    def __init__(self, player_count = 4, cards_per_player = 13,
+    def __init__(self, player_count = 4, deck_length = 36, draw_length = 4, dealer = 0,
                  initial_attacker = None):
         self.attacks = []
         self.defenses = []
@@ -332,7 +343,9 @@ class Table(object):
         self.attacker = None
         self.defender = None
         self.player_count = player_count
-        self.cards_per_player = cards_per_player
+        self.deck_length = deck_length
+        self.draw_length = cards_per_player
+        self.dealer = dealer
         self.initial_attacker = initial_attacker
         self.player_list = []
         self.message = ''
@@ -412,31 +425,33 @@ class Table(object):
     def check_attack(self, attack, attacker, replacement = None):
         if attack == 'pass':
             if self.attacks != []:
-                return (True, '')
-            return (False, 'Passing not allowed.')
+                return True
+            print 'Passing not allowed.'
+            return False
         ## If attacker chose a card to play
         elif isinstance(attack, Card):
             ## Check whether it's a valid attack
             if len(self.attacks) > 0 and not any(attack.rank == c.rank
                                                  for c in (self.attacks +
                                                            self.defenses)):
-                return (False, 'Attack invalid, try again.')
-            return (True, '')
-        return (False, '')
+                print 'Attack invalid, try again.'
+                return False
+            return True
+        print 'Not a card ???'
+        return False
 
-    def process_attack(self, player_list, attacker, defender, message):
+    def process_attack(self):
         while True:
             if len(message) > 0:
                 print message
             attack = attacker.play(True)
             ## If attacker chose to pass, move to next attacker
             ## (attacker cannot pass if no cards are on the table)
-            (is_valid, message) = self.check_attack(attack, attacker)
-            if is_valid == False:
+            if self.check_attack(attack, attacker) == False:
                 continue
             if attack == 'pass':
                 attacker.status = 'pass'
-                return (False, attacker, message) ## do we need to cycle to next attacker?
+                return False
             ## If attacker chose a valid card
             self.attack_count += 1
             self.add_attack(attack)
@@ -444,17 +459,19 @@ class Table(object):
             if attacker not in self.attackers:
                 self.attackers.append(attacker)
             if defender.status == 'pass':
-                return (False, attacker, message)
-            return (True, attacker, message)
+                return False
+            return True
 
     def check_defense(self, defense, replacement = None):
         if defense == 'pass':
-            return (True, '')
+            return True
         elif not isinstance(defense, Card):
-            return (False, 'Defense invalid.')
+            print 'Defense invalid.'
+            return False
         if self.defense_validity(self.attacks[-1], defense):
-            return (True, '')
-        return (False, 'Defense invalid, try again.')
+            return True
+        print 'Defense invalid, try again.'
+        return False
 
     def process_defense(self, player_list, attacker, defender, message):
         while True:
@@ -462,8 +479,7 @@ class Table(object):
                 print message
                 message = ''
             defense = defender.play(False)
-            (is_valid, message) = self.check_defense(defense)
-            if is_valid == False:
+            if self.check_defense(defense) == False:
                 continue
             ## If defender chose to take cards
             if defense == 'pass':
@@ -472,13 +488,14 @@ class Table(object):
                 for p in player_list:
                     if (p != defender and p.status == 'pass'):
                         p.status = 'active'
-                return ('Player %d taking cards.' %
+                print ('Player %d taking cards.' %
                            (defender.index + 1))
+                return
             # If defender played a card
             else:
                 self.add_defense(defense)
                 defender.remove_card(defense)
-                return ''
+                return
 
     def end_condition(deck, player_list):
         if len(deck.cards) > 0:
@@ -495,7 +512,7 @@ class Table(object):
     def add_defense(self, card):
         self.defenses.append(card)
 
-    def clear(self):
+    def clear_table(self):
         self.attacks = []
         self.defenses = []
 
@@ -519,130 +536,136 @@ class Table(object):
 
     def bidding_phase(self):
         for i in range(len(self.player_count)):
-            bid = self.player_list[(table.attacker.index + i) %
+            bid = self.player_list[(self.attacker.index + i) %
                                    self.player_count].bid()
             self.bid_list.append(bid)
 
     def assign_suit_orders(self):
         ## assign trump orders for each player
-        for i in range(len(table.player_count)):
-            player = table.player_list[(table.attacker.index + i) % table.player_count]
+        for i in range(len(self.player_count)):
+            player = self.player_list[(self.attacker.index + i) % self.player_count]
             player.assign_suit_order(self)
+
+    def deck_build_phase(self, manual_build = [False]*player_count]):
+        for i in range(self.player_count):
+            index = (self.dealer.index + 1 + i) % self.player_count
+            if manual_build[index] == False:
+                self.autobuild_deck(self.player_list[index])
+            else:
+                print 'Manual deck building not yet implemented. Restart game.'
+            self.player_list[index].sort_hand_suit_order()
+        return
+
+    def autobuild_deck(self, player):
+        random.shuffle(player.hand)
+        for i in range(len(player.hand) - self.draw_length):
+            player.deck.append(player.hand.pop(0))
+        return
 
     def play_phase(self):
         while True:
-            table.initialize_turn()
-            table.play_turn()
-            print_board(table.durak, table, player_list, cards_per_row, table.defender,
+            self.initialize_turn()
+            self.play_turn()
+            print_board(self.durak, self, player_list, cards_per_row, self.defender,
                         print_mode)
 
-            table.draw_phase()
+            ## self.finalize_turn()
             ## Cards on table are discarded or put into defender's hand
             ## Then defender draws cards if necessary and initiative is passed
-            if table.defender.status == 'pass':
-                table.defender.status = 'active'
-                ## no need to add cards to defender's hand in Rak
-                table.defender.sort_hand()
-                table.attackers[0].cards_won.append(table.attacks + table.defenses)
-                table.clear()
-                if len(table.defender.hand) < table.cards_per_player and len(table.durak.cards) > 0:
-                    print 'wtf? how'
-                for i in range(table.player_count - 1):
-                    if table.player_list[(table.defender.index + i + 1) %
-                                   table.player_count].status in ['active', 'pass']:
-                        table.attacker = player_list[(table.defender.index + i + 1) %
-                                               table.player_count]
-                        break
+            if self.defender.status == 'pass':
+                ## self.defender.status = 'active'
+                ## add cards to defender's hand in Rak!
+                self.defender.extend_hand(self.attacks + self.defenses)
+                self.clear_table()
+                self.initial_attacker = self.player_list[(self.defender.index + 1)
+                                                           % self.player_count]
+                ##for i in range(self.player_count - 1):
+                ##    if self.player_list[(self.defender.index + 1 + i) %
+                ##                   self.player_count].status in ['active', 'pass']:
+                ##        self.attacker = player_list[(self.defender.index + i + 1) %
+                ##                               self.player_count]
+                ##        break
             else:
-                table.defender.cards_won.append(table.defenses)
-                table.attackers[0].cards_won.append(table.attacks)
-                table.clear()
-                table.attacker = table.defender
-                if len(table.defender.hand) < table.cards_per_player and len(table.durak.cards) > 0:
-                    table.defender.draw(table.durak)
-                    table.defender.status = 'active'
-            ## Put players with empty hands into the out list and
-            ## check for end of game
-
-            ## table.update_out_list
-            for player in table.player_list:
-                if player.status == 'empty' and player not in table.out_list:
-                    table.out_list.append(player)
-            if len(table.out_list) == 3 or len(out_list) == 4:
+                self.defender.winnings.append(self.attacks + self.defenses)
+                self.clear_table()
+                self.initial_attacker = self.defender
+            ## This is the draw phase for both attackers and defenders
+            self.draw_phase()
+            ## Put players in out list if out of cards, then reset (passed not out)
+            ## players to active
+            ##
+            ## Check for end of game
+            self.update_player_statuses()
+            ## self.update_out_list
+            ##for player in self.player_list:
+            ##    if player.status == 'empty' and player not in self.out_list:
+            ##        self.out_list.append(player)
+            if len(self.out_list) == 3 or len(self.out_list) == 4:
                 break
 
     def initialize_turn(self):
-        table.attackers = []
-        table.attack_count = 0
-        for player in table.player_list:
+        self.attackers = []
+        self.attack_count = 0
+        for player in self.player_list:
             if player.status == 'pass':
                 player.status = 'active'
-        table.find_next_attacker(table.attacker, table.player_list)
-        table.find_defender(table.attacker, table.player_list)
-        table.trump = table.defender.trump
-        max_attacks = min(table.defender.initial_hand_length,
-                          len(table.defender.hand),
-                          table.defender.trump_card.rank)
+        self.find_next_attacker(self.attacker, self.player_list)
+        self.find_defender(self.attacker, self.player_list)
+        self.trump = self.defender.trump
+        max_attacks = min(self.defender.initial_draw_length,
+                          len(self.defender.hand),
+                          self.defender.trump_card.rank)
 
     def play_turn(self):
-        while (table.attack_count < max_attacks and
-               any((a.status == 'active') for a in table.player_list if
-                   a != table.defender)):
-            (need_defense, table.attacker, message) = table.attack_phase()
-
-            if need_defense == False:
+        while (self.attack_count < self.draw_length and
+               any((a.status == 'active') for a in self.player_list if
+                   a != self.defender)):
+            if self.attack_phase() == False:
                 continue
-            table.defense_phase()
+            self.defense_phase()
 
     def draw_phase(self):
         if len(message) > 0:
             print message
             message = ''
-        raw_input('Press Enter to continue. ')
-        for player in table.attackers:
-            if len(player.hand) < table.cards_per_player and len(table.durak.cards) > 0:
-                player.draw(table.durak)
-                player.status = 'active'
-        for player in table.player_list:
-            if player != table.defender and player.status == 'pass':
-                player.status = 'active'
+        raw_input('Press Enter when ready for draw phase. ')
+        for player in self.attackers:
+            if len(player.hand) < player.draw_length and len(player.deck) > 0:
+                player.draw()
+        if len(defender.hand) < defender.draw_length and len(defender.deck) > 0:
+            defender.draw()
 
     def attack_phase(self):
         ## If attacker passed or the attack just got passed
         ## to an ineligible player, find the next active attacker
-        while (table.attacker == table.defender or
-               table.attacker.status != 'active'):
-            table.attacker = table.player_list[(table.attacker.index + 1) %
-                                   table.player_count]
-        print_board(table.durak, table, player_list, cards_per_row,
-                    table.defender, print_mode)
+        while (self.attacker == self.defender or
+               self.attacker.status != 'active'):
+            self.attacker = self.player_list[(self.attacker.index + 1) %
+                                   self.player_count]
+        print_board(self.durak, self, player_list, cards_per_row,
+                    self.defender, print_mode)
         if len(message) > 0:
             print message
             message = ''
         ## Ask attacker for his move and record whether to prompt for
         ## a defense
-        return table.process_attack(table.player_list, table.attacker,
-                                    table.defender, message)
-
+        return self.process_attack()
 
     def defense_phase(self):
         ## If defense is required, reset all passed players to active
-        for player in table.player_list:
+        for player in self.player_list:
             if player.status == 'pass':
                 player.status = 'active'
         ## Initiate defense stage
         ## Print game board
-        print_board(table.durak, table, player_list, cards_per_row, table.defender,
+        print_board(self.durak, self, player_list, cards_per_row, self.defender,
                     print_mode)
         if len(message) > 0:
             print message
             message = ''
         ## Ask defender for his move
-        message = table.process_defense(table.player_list, table.attacker, table.defender,
+        self.process_defense(self.player_list, self.attacker, self.defender,
                                         message)
-        for p in table.player_list:
-            if p.status == 'pass' and p != table.defender:
-                p.status = 'active'
 
 
 def print_board(deck, table, player_list, cards_per_row, defender = None,
@@ -864,16 +887,15 @@ def print_board(deck, table, player_list, cards_per_row, defender = None,
 
 if __name__ == "__main__":
 
-    table = Table()
+    player_count = 4
+    deck_length = 36
+    draw_length = 4
+    table = Table(player_count, deck_length, draw_length)
     print_mode = 'grid'
     print_suits_as_symbols = True
     table.durak = DurakDeck(print_suits_as_symbols)
     print table.durak.print_deck()
     table.durak.shuffle()
-    player_count = 4
-    table.player_count = player_count
-    deck_length = 36
-    hand_length = 4
     cards_per_row = 6
     initial_attacker = None
     player_list = []
@@ -883,17 +905,17 @@ if __name__ == "__main__":
         table.player_list.append(Player(i, table.cards_per_player))
     ## Deal cards to players and find trump suit
     table.durak.deal_cards(table.player_list, table.deck_length / table.player_count)
-    try:
-        table.trump_card = table.durak.cards[0]
-        table.durak.cards.remove(table.trump_card)
-        for card in table.durak.cards:
-            if card.suit != table.trump_card.suit:
-                table.bot_card = card
-                table.durak.cards.remove(card)
-        table.trump = table.trump_card.suit
-        table.bot = table.bot_card.suit
-    except IndexError:
-        print 'Deck is empty, restart game.'
+    ##try:
+    ##    table.trump_card = table.durak.cards[0]
+    ##    table.durak.cards.remove(table.trump_card)
+    ##    for card in table.durak.cards:
+    ##        if card.suit != table.trump_card.suit:
+    ##            table.bot_card = card
+    ##            table.durak.cards.remove(card)
+    ##    table.trump = table.trump_card.suit
+    ##    table.bot = table.bot_card.suit
+    ##except IndexError:
+    ##    print 'Deck is empty, restart game.'
     ## Clean up and sort player hands
     for i in range(len(table.player_list)):
         table.player_list[i].sort_hand()
@@ -913,7 +935,9 @@ if __name__ == "__main__":
         table.assign_suit_orders()
 
         ##for player in table.player_list:
-        ##    player.initial_hand_length = cards_per_player
+        ##    player.initial_draw_length = cards_per_player
+
+        table.build_decks() ## False means Auto-build the personal decks
 
         table.play_phase()
 
