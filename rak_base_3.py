@@ -46,7 +46,7 @@ class Card(object):
 
 class DurakDeck(object):
 
-    ranks = range(2,15)
+    ranks = range(6,15)
     suits = range(4)
 
     def __init__(self, suit_symbols = True):
@@ -305,6 +305,16 @@ class Player(object):
             string += card.print_face() + ' '
         return string
 
+    def assign_suit_order(self, table):
+        self.suit_order = []
+        for j in range(len(table.player_count)):
+            new_suit = table.player_list[(player.index + j) % table.player_count].trump
+            if new_suit not in player.suit_order and suit != 5:
+                player.suit_order.append(new_suit)
+        for j in range(4)[::-1]:
+            if j not in player.suit_order:
+                player.suit_order.append(j)
+
 
 class Table(object):
 
@@ -340,9 +350,13 @@ class Table(object):
                 for player in player_list:
                     for card in player.hand:
                         if card.rank == rank and card.suit == special_suit:
-                            return player
-            return player_list[0]
-        return player_list[(initial_attacker.index + 1) % len(player_list)]
+                            self.initial_attacker = player
+                            return
+            self.initial_attacker = player_list[0]
+            return
+        self.initial_attacker = player_list[(initial_attacker.index + 1)
+                                            % len(player_list)]
+        return
 
     def find_next_attacker(self, attacker, player_list):
         for i in range(len(player_list) - 1):
@@ -502,6 +516,133 @@ class Table(object):
             string += card.print_face() + ' '
         string += ' ' * (4 * (num_cards - len(self.defenses)))
         return string
+
+    def bidding_phase(self):
+        for i in range(len(self.player_count)):
+            bid = self.player_list[(table.attacker.index + i) %
+                                   self.player_count].bid()
+            self.bid_list.append(bid)
+
+    def assign_suit_orders(self):
+        ## assign trump orders for each player
+        for i in range(len(table.player_count)):
+            player = table.player_list[(table.attacker.index + i) % table.player_count]
+            player.assign_suit_order(self)
+
+    def play_phase(self):
+        while True:
+            table.initialize_turn()
+            table.play_turn()
+            print_board(table.durak, table, player_list, cards_per_row, table.defender,
+                        print_mode)
+
+            table.draw_phase()
+            ## Cards on table are discarded or put into defender's hand
+            ## Then defender draws cards if necessary and initiative is passed
+            if table.defender.status == 'pass':
+                table.defender.status = 'active'
+                ## no need to add cards to defender's hand in Rak
+                table.defender.sort_hand()
+                table.attackers[0].cards_won.append(table.attacks + table.defenses)
+                table.clear()
+                if len(table.defender.hand) < table.cards_per_player and len(table.durak.cards) > 0:
+                    print 'wtf? how'
+                for i in range(table.player_count - 1):
+                    if table.player_list[(table.defender.index + i + 1) %
+                                   table.player_count].status in ['active', 'pass']:
+                        table.attacker = player_list[(table.defender.index + i + 1) %
+                                               table.player_count]
+                        break
+            else:
+                table.defender.cards_won.append(table.defenses)
+                table.attackers[0].cards_won.append(table.attacks)
+                table.clear()
+                table.attacker = table.defender
+                if len(table.defender.hand) < table.cards_per_player and len(table.durak.cards) > 0:
+                    table.defender.draw(table.durak)
+                    table.defender.status = 'active'
+            ## Put players with empty hands into the out list and
+            ## check for end of game
+
+            ## table.update_out_list
+            for player in table.player_list:
+                if player.status == 'empty' and player not in table.out_list:
+                    table.out_list.append(player)
+            if len(table.out_list) == 3 or len(out_list) == 4:
+                break
+
+    def initialize_turn(self):
+        table.attackers = []
+        table.attack_count = 0
+        for player in table.player_list:
+            if player.status == 'pass':
+                player.status = 'active'
+        table.find_next_attacker(table.attacker, table.player_list)
+        table.find_defender(table.attacker, table.player_list)
+        table.trump = table.defender.trump
+        max_attacks = min(table.defender.initial_hand_length,
+                          len(table.defender.hand),
+                          table.defender.trump_card.rank)
+
+    def play_turn(self):
+        while (table.attack_count < max_attacks and
+               any((a.status == 'active') for a in table.player_list if
+                   a != table.defender)):
+            (need_defense, table.attacker, message) = table.attack_phase()
+
+            if need_defense == False:
+                continue
+            table.defense_phase()
+
+    def draw_phase(self):
+        if len(message) > 0:
+            print message
+            message = ''
+        raw_input('Press Enter to continue. ')
+        for player in table.attackers:
+            if len(player.hand) < table.cards_per_player and len(table.durak.cards) > 0:
+                player.draw(table.durak)
+                player.status = 'active'
+        for player in table.player_list:
+            if player != table.defender and player.status == 'pass':
+                player.status = 'active'
+
+    def attack_phase(self):
+        ## If attacker passed or the attack just got passed
+        ## to an ineligible player, find the next active attacker
+        while (table.attacker == table.defender or
+               table.attacker.status != 'active'):
+            table.attacker = table.player_list[(table.attacker.index + 1) %
+                                   table.player_count]
+        print_board(table.durak, table, player_list, cards_per_row,
+                    table.defender, print_mode)
+        if len(message) > 0:
+            print message
+            message = ''
+        ## Ask attacker for his move and record whether to prompt for
+        ## a defense
+        return table.process_attack(table.player_list, table.attacker,
+                                    table.defender, message)
+
+
+    def defense_phase(self):
+        ## If defense is required, reset all passed players to active
+        for player in table.player_list:
+            if player.status == 'pass':
+                player.status = 'active'
+        ## Initiate defense stage
+        ## Print game board
+        print_board(table.durak, table, player_list, cards_per_row, table.defender,
+                    print_mode)
+        if len(message) > 0:
+            print message
+            message = ''
+        ## Ask defender for his move
+        message = table.process_defense(table.player_list, table.attacker, table.defender,
+                                        message)
+        for p in table.player_list:
+            if p.status == 'pass' and p != table.defender:
+                p.status = 'active'
 
 
 def print_board(deck, table, player_list, cards_per_row, defender = None,
@@ -731,7 +872,8 @@ if __name__ == "__main__":
     table.durak.shuffle()
     player_count = 4
     table.player_count = player_count
-    cards_per_player = 13
+    deck_length = 36
+    hand_length = 4
     cards_per_row = 6
     initial_attacker = None
     player_list = []
@@ -739,8 +881,8 @@ if __name__ == "__main__":
     ## table.initiate_round
     for i in range(table.player_count):
         table.player_list.append(Player(i, table.cards_per_player))
-    ##Deal cards to players and find trump suit
-    table.durak.deal_cards(table.player_list, table.player_count * table.cards_per_player)
+    ## Deal cards to players and find trump suit
+    table.durak.deal_cards(table.player_list, table.deck_length / table.player_count)
     try:
         table.trump_card = table.durak.cards[0]
         table.durak.cards.remove(table.trump_card)
@@ -765,142 +907,16 @@ if __name__ == "__main__":
 
     while True:
         out_list = []
-        table.initial_attacker = table.find_initial_attacker(table.player_list,
-                                                       table.initial_attacker)
+        table.find_initial_attacker(table.player_list, table.initial_attacker)
         table.attacker = table.initial_attacker
-        ## table.bidding_phase
-        for i in range(len(table.player_count)):
-            ## player.execute_bid
-            player = table.player_list[(table.attacker.index + i) % table.player_count]
-            while True:
-                bid = player.play('bid')
-                if isinstance(bid, Card):
-                    player.remove_card(bid)
-                    player.assign_trump_card(bid)
-                    break
-                print 'Not a valid bid. Try again.'
-            table.bid_list.append(bid)
-        ## table.assign_trump_orders
-        ## assign trump orders for each player
-        for i in range(len(table.player_count)):
-            player = table.player_list[(table.attacker.index + i) % table.player_count]
-            player.suit_order = []
-            for j in range(len(table.player_count)):
-                new_suit = table.player_list[(player.index + j) % table.player_count].trump
-                if new_suit not in player.suit_order:
-                    player.suit_order.append(new_suit)
-            for j in range(4)[::-1]:
-                if j not in player.suit_order:
-                    player.suit_order.append(j)
-        for player in table.player_list:
-            player.initial_hand_length = len(player.hand)
-        ## table.play_phase
-        while True:
-            ## table.initialize_turn
-            table.attackers = []
-            table.attack_count = 0
-            for player in table.player_list:
-                if player.status == 'pass':
-                    player.status = 'active'
-            table.find_next_attacker(table.attacker, table.player_list)
-            table.find_defender(table.attacker, table.player_list)
-            table.trump = table.defender.trump
-            max_attacks = min(table.defender.initial_hand_length,
-                              len(table.defender.hand),
-                              table.defender.trump_card.rank)
-            ## table.play_turn
-            while (table.attack_count < max_attacks and
-                   any((a.status == 'active') for a in table.player_list if
-                       a != table.defender)):
-                ## table.execute_attack
-                ## If attacker passed or the attack just got passed
-                ## to an ineligible player, find the next active attacker
-                while (table.attacker == table.defender or
-                       table.attacker.status != 'active'):
-                    table.attacker = table.player_list[(table.attacker.index + 1) %
-                                           table.player_count]
-                print_board(table.durak, table, player_list, cards_per_row,
-                            table.defender, print_mode)
-                if len(message) > 0:
-                    print message
-                    message = ''
-                ## Ask attacker for his move and record whether to prompt for
-                ## a defense
-                (need_defense,
-                 table.attacker, message) = table.process_attack(table.player_list,
-                                                                 table.attacker,
-                                                                 table.defender,
-                                                                 message)
-                if need_defense == False:
-                    continue
-                ## table.execute_defense
-                ## If defense is required, reset all passed players to active
-                for player in table.player_list:
-                    if player.status == 'pass':
-                        player.status = 'active'
-                ## Initiate defense stage
-                ## Print game board
-                print_board(table.durak, table, player_list, cards_per_row, table.defender,
-                            print_mode)
-                if len(message) > 0:
-                    print message
-                    message = ''
-                ## Ask defender for his move
-                message = table.process_defense(table.player_list, table.attacker, table.defender,
-                                                message)
-                for p in table.player_list:
-                    if p.status == 'pass' and p != table.defender:
-                        p.status = 'active'
-            ## Attack is over, take/discard cards + draw + pass initiative
-            ## First, attackers draw cards
-            print_board(table.durak, table, player_list, cards_per_row, table.defender,
-                        print_mode)
+        table.bidding_phase()
+        table.assign_suit_orders()
 
-            ## table.draw_phase
-            if len(message) > 0:
-                print message
-                message = ''
-            raw_input('Press Enter to continue. ')
-            for player in table.attackers:
-                if len(player.hand) < table.cards_per_player and len(table.durak.cards) > 0:
-                    player.draw(table.durak)
-                    player.status = 'active'
-            for player in table.player_list:
-                if player != table.defender and player.status == 'pass':
-                    player.status = 'active'
-            ## Cards on table are discarded or put into defender's hand
-            ## Then defender draws cards if necessary and initiative is passed
-            if table.defender.status == 'pass':
-                table.defender.status = 'active'
-                ## no need to add cards to defender's hand in Rak
-                table.defender.sort_hand()
-                table.attackers[0].cards_won.append(table.attacks + table.defenses)
-                table.clear()
-                if len(table.defender.hand) < table.cards_per_player and len(table.durak.cards) > 0:
-                    print 'wtf? how'
-                for i in range(table.player_count - 1):
-                    if table.player_list[(table.defender.index + i + 1) %
-                                   table.player_count].status in ['active', 'pass']:
-                        table.attacker = player_list[(table.defender.index + i + 1) %
-                                               table.player_count]
-                        break
-            else:
-                table.defender.cards_won.append(table.defenses)
-                table.attackers[0].cards_won.append(table.attacks)
-                table.clear()
-                table.attacker = table.defender
-                if len(table.defender.hand) < table.cards_per_player and len(table.durak.cards) > 0:
-                    table.defender.draw(table.durak)
-                    table.defender.status = 'active'
-            ## Put players with empty hands into the out list and
-            ## check for end of game
+        ##for player in table.player_list:
+        ##    player.initial_hand_length = cards_per_player
 
-            ## table.update_out_list
-            for player in table.player_list:
-                if player.status == 'empty' and player not in table.out_list:
-                    table.out_list.append(player)
-            if len(table.out_list) == 3 or len(out_list) == 4:
-                break
+        table.play_phase()
+
         ## Game over, print name of losing player
         ## table.scoring_phase
         team02_cards_won = table.player_list[0].cards_won + table.player_list[2].cards_won
