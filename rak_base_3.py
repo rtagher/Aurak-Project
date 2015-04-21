@@ -346,6 +346,7 @@ class Table(object):
         self.draw_length = cards_per_player
         self.dealer = dealer
         self.initial_attacker = initial_attacker
+        self.initial_attacker_priority = True
         self.player_list = []
         self.message = ''
         self.cards_per_row = 6
@@ -402,7 +403,7 @@ class Table(object):
             return True
         return False
 
-    def trump_validity(self, trump, defense = None):
+    """def trump_validity(self, trump, defense = None):
         if trump == self.bot_card.suit:
             print 'Trump and bitch cannot be the same suit.'
             return False
@@ -428,7 +429,7 @@ class Table(object):
             if (self.defense_validity(self.attacks[-1], defense, None, bot)
                 == False):
                 return False
-        return True
+        return True"""
 
     def check_attack(self, attack, attacker, replacement = None):
         if attack == 'pass':
@@ -607,7 +608,9 @@ class Table(object):
             ## players to active
             ##
             ## Check for end of game
-            self.update_statuses() ## not yet implemented
+            self.update_statuses()
+            if self.check_end_of_round() == True:
+                return
             ## self.update_out_list
             ##for player in self.player_list:
             ##    if player.status == 'empty' and player not in self.out_list:
@@ -615,8 +618,8 @@ class Table(object):
 
             ## if self.round_end() == True:
             ## break
-            if len(self.out_list) == 3 or len(self.out_list) == 4:
-                break
+            ##if len(self.out_list) == 3 or len(self.out_list) == 4:
+            ##    break
 
     def start_turn(self):
         self.attackers = []
@@ -674,6 +677,11 @@ class Table(object):
         ##for player in self.player_list:
         ##    if player.status == 'empty' and player not in self.out_list:
         ##        self.out_list.append(player)
+        for player in self.player_list:
+            if player.status != 'empty':
+                if len(player.hand) == 0:
+                    player.status = 'empty'
+        return
 
     def attack_phase(self):
         ## If attacker passed or the attack just got passed
@@ -706,6 +714,64 @@ class Table(object):
         ## Ask defender for his move
         self.process_defense(self.player_list, self.attacker, self.defender,
                                         message)
+        return
+
+    def score_phase(self):
+        team02_cards_won = table.player_list[0].cards_won + table.player_list[2].cards_won
+        team02_suits_bid = [player.trump for player in
+                            [table.player_list[0], table.player_list[2]]]
+        team02_score = 0
+        for card in team02_cards_won:
+            if card.suit in team02_suits_bid:
+                team13_score += 1
+
+        team13_cards_won = table.player_list[1].cards_won + table.player_list[3].cards_won
+        team13_suits_bid = [player.trump for player in
+                            [table.player_list[1], table.player_list[3]]]
+        team13_score = 0
+        for card in team13_cards_won:
+            if card.suit in team13_suits_bid:
+                team13_score += 1
+
+        print ('Round complete. \nPlayers 1 and 3 bid %s + %s for a total '
+               % (table.bid_list[0].face(), table.bid_list[2].face()) +
+               'of %d %s+%s and won %d.' (table.bid_list[0].rank +
+                                          table.bid_list[2].rank,
+                                          suit_symbols[table.bid_list[0].suit],
+                                          suit_symbols[table.bid_list[2].suit],
+                                          team02_score))
+        if team02_score >= table.bid_list[0].rank + table.bid_list[2].rank:
+            print 'Success!'
+            table.player_list[0].bids_won.append(table.player_list[0].trump_card)
+            table.player_list[2].bids_won.append(table.player_list[2].trump_card)
+        else:
+            print 'Failure.'
+            table.durak.append(table.player_list[0].trump_card)
+            table.durak.append(table.player_list[2].trump_card)
+
+        print ('Round complete. \nPlayers 1 and 3 bid %s + %s for a total '
+               % (table.bid_list[0].face(), table.bid_list[2].face()) +
+               'of %d %s+%s and won %d.' (table.bid_list[0].rank +
+                                          table.bid_list[2].rank,
+                                          suit_symbols[table.bid_list[0].suit],
+                                          suit_symbols[table.bid_list[2].suit],
+                                          team02_score))
+        if team13_score >= table.bid_list[1].rank + table.bid_list[3].rank:
+            print 'Success!'
+            table.player_list[1].bids_won.append(table.player_list[1].trump_card)
+            table.player_list[3].bids_won.append(table.player_list[3].trump_card)
+        else:
+            print 'Failure.'
+            table.durak.append(player_list[1].trump_card)
+            table.durak.append(player_list[3].trump_card)
+
+        print 'PLAYER WINNINGS'
+        for player in table.player_list:
+            line = 'Player %d: %s' (player.index, player.print_bids_won)
+        raw_input('Press Enter to continue. ')
+
+    def check_end_of_round(self):
+        pass
 
     def print_board(self):
         if mode == 'list':
@@ -956,56 +1022,4 @@ if __name__ == "__main__":
         table.build_decks() ## False means Auto-build the personal decks
         table.play_phase()
         ## Game over, print name of losing player
-        ## table.scoring_phase
-        team02_cards_won = table.player_list[0].cards_won + table.player_list[2].cards_won
-        team02_suits_bid = [player.trump for player in
-                            [table.player_list[0], table.player_list[2]]]
-        team02_score = 0
-        for card in team02_cards_won:
-            if card.suit in team02_suits_bid:
-                team13_score += 1
-
-        team13_cards_won = table.player_list[1].cards_won + table.player_list[3].cards_won
-        team13_suits_bid = [player.trump for player in
-                            [table.player_list[1], table.player_list[3]]]
-        team13_score = 0
-        for card in team13_cards_won:
-            if card.suit in team13_suits_bid:
-                team13_score += 1
-
-        print ('Round complete. \nPlayers 1 and 3 bid %s + %s for a total '
-               % (table.bid_list[0].face(), table.bid_list[2].face()) +
-               'of %d %s+%s and won %d.' (table.bid_list[0].rank +
-                                          table.bid_list[2].rank,
-                                          suit_symbols[table.bid_list[0].suit],
-                                          suit_symbols[table.bid_list[2].suit],
-                                          team02_score))
-        if team02_score >= table.bid_list[0].rank + table.bid_list[2].rank:
-            print 'Success!'
-            table.player_list[0].bids_won.append(table.player_list[0].trump_card)
-            table.player_list[2].bids_won.append(table.player_list[2].trump_card)
-        else:
-            print 'Failure.'
-            table.durak.append(table.player_list[0].trump_card)
-            table.durak.append(table.player_list[2].trump_card)
-
-        print ('Round complete. \nPlayers 1 and 3 bid %s + %s for a total '
-               % (table.bid_list[0].face(), table.bid_list[2].face()) +
-               'of %d %s+%s and won %d.' (table.bid_list[0].rank +
-                                          table.bid_list[2].rank,
-                                          suit_symbols[table.bid_list[0].suit],
-                                          suit_symbols[table.bid_list[2].suit],
-                                          team02_score))
-        if team13_score >= table.bid_list[1].rank + table.bid_list[3].rank:
-            print 'Success!'
-            table.player_list[1].bids_won.append(table.player_list[1].trump_card)
-            table.player_list[3].bids_won.append(table.player_list[3].trump_card)
-        else:
-            print 'Failure.'
-            table.durak.append(player_list[1].trump_card)
-            table.durak.append(player_list[3].trump_card)
-
-        print 'PLAYER WINNINGS'
-        for player in table.player_list:
-            line = 'Player %d: %s' (player.index, player.print_bids_won)
-        raw_input('Press Enter to continue. ')
+        table.score_phase()
