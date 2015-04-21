@@ -110,7 +110,6 @@ class Player(object):
         self.suit_order = []
         self.status = 'active'
         self.draw_length = draw_length
-        self.initial_draw_length = 13
 
     def reset_status(self):
         self.status = 'active'
@@ -349,6 +348,8 @@ class Table(object):
         self.initial_attacker = initial_attacker
         self.player_list = []
         self.message = ''
+        self.cards_per_row = 6
+        self.mode = 'list'
 
     def assign_trump(self, trump):
         self.trump = trump
@@ -356,19 +357,26 @@ class Table(object):
     def assign_bot(self, bot):
         self.bot = bot
 
-    def find_initial_attacker(self, player_list, initial_attacker,
-                              special_suit = 3):
-        if initial_attacker == None:
-            for rank in range(2,14):
-                for player in player_list:
-                    for card in player.hand:
-                        if card.rank == rank and card.suit == special_suit:
-                            self.initial_attacker = player
-                            return
-            self.initial_attacker = player_list[0]
-            return
-        self.initial_attacker = player_list[(initial_attacker.index + 1)
-                                            % len(player_list)]
+    ##old function for finding initial attacker of a round based on lowest card
+    ##of the trump suit
+    ##def find_initial_attacker(self, special_suit = 3):
+    ##    if initial_attacker == None:
+    ##        for rank in range(2,14):
+    ##            for player in player_list:
+    ##                for card in player.hand:
+    ##                    if card.rank == rank and card.suit == special_suit:
+    ##                        self.initial_attacker = player
+    ##                        return
+    ##        self.initial_attacker = player_list[0]
+    ##        return
+    ##    self.initial_attacker = player_list[(initial_attacker.index + 1)
+    ##                                        % len(player_list)]
+    ##    return
+
+    def find_initial_attacker(self):
+        while initial_attacker.status not in ('active', 'pass'):
+            initial_attacker = player_list[(initial_attacker.index + 1)
+                                            % self.player_count]
         return
 
     def find_next_attacker(self, attacker, player_list):
@@ -534,9 +542,33 @@ class Table(object):
         string += ' ' * (4 * (num_cards - len(self.defenses)))
         return string
 
-    def bidding_phase(self):
+    def start_game(self):
+        for i in range(self.player_count):
+            self.player_list.append(Player(i, self.cards_per_player))
+
+    def start_round(self):
+        ## Deal cards to players (and find trump suit)
+        self.durak.deal_cards(self.player_list, self.deck_length / self.player_count)
+        ##try:
+        ##    table.trump_card = table.durak.cards[0]
+        ##    table.durak.cards.remove(table.trump_card)
+        ##    for card in table.durak.cards:
+        ##        if card.suit != table.trump_card.suit:
+        ##            table.bot_card = card
+        ##            table.durak.cards.remove(card)
+        ##    table.trump = table.trump_card.suit
+        ##    table.bot = table.bot_card.suit
+        ##except IndexError:
+        ##    print 'Deck is empty, restart game.'
+        ##Clean up and sort player hands
+        for i in range(len(self.player_list)):
+            self.player_list[i].sort_hand()
+        self.initial_attacker = self.player_list[(self.dealer.index + 1 + i) %
+                                                 self.player_count]
+
+    def bid_phase(self):
         for i in range(len(self.player_count)):
-            bid = self.player_list[(self.attacker.index + i) %
+            bid = self.player_list[(self.dealer.index + 1 + i) %
                                    self.player_count].bid()
             self.bid_list.append(bid)
 
@@ -546,13 +578,13 @@ class Table(object):
             player = self.player_list[(self.attacker.index + i) % self.player_count]
             player.assign_suit_order(self)
 
-    def deck_build_phase(self, manual_build = [False]*player_count]):
+    def build_decks(self, manual_build = False):
         for i in range(self.player_count):
             index = (self.dealer.index + 1 + i) % self.player_count
             if manual_build[index] == False:
                 self.autobuild_deck(self.player_list[index])
             else:
-                print 'Manual deck building not yet implemented. Restart game.'
+                print 'Manual deck building not implemented yet restart game'
             self.player_list[index].sort_hand_suit_order()
         return
 
@@ -564,57 +596,39 @@ class Table(object):
 
     def play_phase(self):
         while True:
-            self.initialize_turn()
+            self.start_turn()
             self.play_turn()
-            print_board(self.durak, self, player_list, cards_per_row, self.defender,
-                        print_mode)
+            self.print_board()
+            self.finish_turn()
 
-            ## self.finalize_turn()
-            ## Cards on table are discarded or put into defender's hand
-            ## Then defender draws cards if necessary and initiative is passed
-            if self.defender.status == 'pass':
-                ## self.defender.status = 'active'
-                ## add cards to defender's hand in Rak!
-                self.defender.extend_hand(self.attacks + self.defenses)
-                self.clear_table()
-                self.initial_attacker = self.player_list[(self.defender.index + 1)
-                                                           % self.player_count]
-                ##for i in range(self.player_count - 1):
-                ##    if self.player_list[(self.defender.index + 1 + i) %
-                ##                   self.player_count].status in ['active', 'pass']:
-                ##        self.attacker = player_list[(self.defender.index + i + 1) %
-                ##                               self.player_count]
-                ##        break
-            else:
-                self.defender.winnings.append(self.attacks + self.defenses)
-                self.clear_table()
-                self.initial_attacker = self.defender
             ## This is the draw phase for both attackers and defenders
             self.draw_phase()
             ## Put players in out list if out of cards, then reset (passed not out)
             ## players to active
             ##
             ## Check for end of game
-            self.update_player_statuses()
+            self.update_statuses() ## not yet implemented
             ## self.update_out_list
             ##for player in self.player_list:
             ##    if player.status == 'empty' and player not in self.out_list:
             ##        self.out_list.append(player)
+
+            ## if self.round_end() == True:
+            ## break
             if len(self.out_list) == 3 or len(self.out_list) == 4:
                 break
 
-    def initialize_turn(self):
+    def start_turn(self):
         self.attackers = []
         self.attack_count = 0
         for player in self.player_list:
             if player.status == 'pass':
                 player.status = 'active'
-        self.find_next_attacker(self.attacker, self.player_list)
+        self.find_initial_attacker()
         self.find_defender(self.attacker, self.player_list)
         self.trump = self.defender.trump
-        max_attacks = min(self.defender.initial_draw_length,
-                          len(self.defender.hand),
-                          self.defender.trump_card.rank)
+        max_attacks = min(self.defender.draw_length,
+                          len(self.defender.hand))
 
     def play_turn(self):
         while (self.attack_count < self.draw_length and
@@ -623,6 +637,27 @@ class Table(object):
             if self.attack_phase() == False:
                 continue
             self.defense_phase()
+
+    def finish_turn(self):
+        ## Cards on table are discarded or put into defender's hand
+        ## Then defender draws cards if necessary and initiative is passed
+        if self.defender.status == 'pass':
+            ## self.defender.status = 'active'
+            ## add cards to defender's hand in Rak!
+            self.defender.extend_hand(self.attacks + self.defenses)
+            self.clear_table()
+            self.initial_attacker = self.player_list[(self.defender.index + 1)
+                                                       % self.player_count]
+            ##for i in range(self.player_count - 1):
+            ##    player = self.player_list[(self.defender.index + 1 + i) %
+            ##                              self.player_count]
+            ##    if player.status in ['active', 'pass']:
+            ##        self.initial_attacker = player
+            ##        break
+        else:
+            self.defender.winnings.append(self.attacks + self.defenses)
+            self.clear_table()
+            self.initial_attacker = self.defender
 
     def draw_phase(self):
         if len(message) > 0:
@@ -635,6 +670,11 @@ class Table(object):
         if len(defender.hand) < defender.draw_length and len(defender.deck) > 0:
             defender.draw()
 
+    def update_statuses(self):
+        ##for player in self.player_list:
+        ##    if player.status == 'empty' and player not in self.out_list:
+        ##        self.out_list.append(player)
+
     def attack_phase(self):
         ## If attacker passed or the attack just got passed
         ## to an ineligible player, find the next active attacker
@@ -642,8 +682,7 @@ class Table(object):
                self.attacker.status != 'active'):
             self.attacker = self.player_list[(self.attacker.index + 1) %
                                    self.player_count]
-        print_board(self.durak, self, player_list, cards_per_row,
-                    self.defender, print_mode)
+        self.print_board()
         if len(message) > 0:
             print message
             message = ''
@@ -656,10 +695,11 @@ class Table(object):
         for player in self.player_list:
             if player.status == 'pass':
                 player.status = 'active'
+        if self.initial_attacker_priority == True:
+            self.attacker = self.initial_attacker
         ## Initiate defense stage
         ## Print game board
-        print_board(self.durak, self, player_list, cards_per_row, self.defender,
-                    print_mode)
+        self.print_board()
         if len(message) > 0:
             print message
             message = ''
@@ -667,222 +707,219 @@ class Table(object):
         self.process_defense(self.player_list, self.attacker, self.defender,
                                         message)
 
-
-def print_board(deck, table, player_list, cards_per_row, defender = None,
-                mode = 'list'):
-
-    if mode == 'list':
-        print '-' * 101
-    else:
-        print '-' * 124
-    print '\n'
-    ## Print player 3 hand
-    line = ''
-    if mode == 'list':
-        rows2 = [player_list[2].print_hand_faces_row(i, cards_per_row)
-                 for i in range(4)]
-        ner2 = 4
-        for i in range(4)[::-1]:
-            line = ' ' * 39
-            if rows2[i] == ' ' * 4 * cards_per_row:
-                ner2 = i
-                line += rows2[i]
-            else:
-                line += rows2[ner2 - 1 - i]
-            line += ' ' * 10
-            print line[:-1]
-    elif mode == 'grid':
-        for i in range(4)[::-1]:
-            line = ' ' * 57
-            suit = player_list[2].suit_order[i]
-            line += suit_symbols[suit] + ' '
-            for j in range(13):
-                if suit * 13 + j in player_list[2].get_values():
-                    if len(rank_symbols[j + 2] + suit_symbols[suit]) == 2:
-                        line += '%s%s  ' % (rank_symbols[j + 2],
-                                            suit_symbols[suit])
-                    else:
-                        line += '%s%s ' % (rank_symbols[j + 2],
-                                           suit_symbols[suit])
+    def print_board(self):
+        if mode == 'list':
+            print '-' * 101
+        else:
+            print '-' * 124
+        print '\n'
+        ## Print player 3 hand
+        line = ''
+        if mode == 'list':
+            rows2 = [player_list[2].print_hand_faces_row(i, cards_per_row)
+                     for i in range(4)]
+            ner2 = 4
+            for i in range(4)[::-1]:
+                line = ' ' * 39
+                if rows2[i] == ' ' * 4 * cards_per_row:
+                    ner2 = i
+                    line += rows2[i]
                 else:
-                    line += ' ' * 4
-            line += ' ' * 10
-            print line
-    print
-    line = ' ' * 44
-    if mode == 'grid':
-        line += ' ' * 32
-    if defender != None:
-        if 2 == defender.index:
-            line += ('**Player ' + str(2 + 1) + '**')
+                    line += rows2[ner2 - 1 - i]
+                line += ' ' * 10
+                print line[:-1]
+        elif mode == 'grid':
+            for i in range(4)[::-1]:
+                line = ' ' * 57
+                suit = player_list[2].suit_order[i]
+                line += suit_symbols[suit] + ' '
+                for j in range(13):
+                    if suit * 13 + j in player_list[2].get_values():
+                        if len(rank_symbols[j + 2] + suit_symbols[suit]) == 2:
+                            line += '%s%s  ' % (rank_symbols[j + 2],
+                                                suit_symbols[suit])
+                        else:
+                            line += '%s%s ' % (rank_symbols[j + 2],
+                                               suit_symbols[suit])
+                    else:
+                        line += ' ' * 4
+                line += ' ' * 10
+                print line
+        print
+        line = ' ' * 44
+        if mode == 'grid':
+            line += ' ' * 32
+        if defender != None:
+            if 2 == defender.index:
+                line += ('**Player ' + str(2 + 1) + '**')
+            else:
+                line += ('  Player ' + str(2 + 1) + '  ')
         else:
             line += ('  Player ' + str(2 + 1) + '  ')
-    else:
-        line += ('  Player ' + str(2 + 1) + '  ')
-    line += ' ' * 10
-    print line
-    ## Print deck
-    print '\n\n'
-    line = ' ' * 46
-    if mode == 'grid':
-        line += ' ' * 32
-    line += 'Trump: %s' % table.trump_card.face()
-    print line
-    '''line = ' ' * 46
-    if mode == 'grid':
-        line += ' ' * 12
-    line += 'Bitch: %s' % table.bot_card.face()
-    print line'''
-    line = ' ' * 41
-    if mode == 'grid':
-        line += ' ' * 32
-    if len(deck.cards) == 0 or len(deck.cards) == 1:
-        line += 'No cards face down '
-    elif len(deck.cards) == 2:
-        line += ' 1 card face down  '
-    elif len(str(len(deck.cards) - 1)) == 1:
-        line += str(len(deck.cards) - 1) + ' cards face down  '
-    else:
-        line += str(len(deck.cards) - 1) + ' cards face down '
-    print line
-    ## Players 2 and 4
-    if mode == 'list':
-        rows1 = [player_list[1].print_hand_faces_row(i, cards_per_row)
-                 for i in range(4)]
-        rows3 = [player_list[3].print_hand_faces_row(i, cards_per_row)
-                 for i in range(4)]
-        ner1 = 4
-        ner3 = 4
-        for i in range(4)[::-1]:
-            line = ' ' * 1
-            if rows1[i] == ' ' * 4 * cards_per_row:
-                ner1 = i
-                line += rows1[i]
-            else:
-                line += rows1[ner1 - 1 - i]
-            line += ' ' * 52
-            if rows3[i] == ' ' * 4 * cards_per_row:
-                ner3 = i
-                line += rows3[i]
-            else:
-                line += rows3[ner3 - 1 - i]
-            print line[:-1]
-    elif mode == 'grid':
-        for i in range(4)[::-1]:
-            line = ' ' * 1
-            suit = player_list[1].suit_order[i]
-            line += suit_symbols[suit] + ' '
-            for j in range(13):
-                if suit * 13 + j in player_list[1].get_values():
-                    if len(rank_symbols[j + 2] + suit_symbols[suit]) == 2:
-                        line += '%s%s  ' % (rank_symbols[j + 2],
-                                            suit_symbols[suit])
-                    else:
-                        line += '%s%s ' % (rank_symbols[j + 2],
-                                           suit_symbols[suit])
+        line += ' ' * 10
+        print line
+        ## Print deck
+        print '\n\n'
+        line = ' ' * 46
+        if mode == 'grid':
+            line += ' ' * 32
+        line += 'Trump: %s' % table.trump_card.face()
+        print line
+        '''line = ' ' * 46
+        if mode == 'grid':
+            line += ' ' * 12
+        line += 'Bitch: %s' % table.bot_card.face()
+        print line'''
+        line = ' ' * 41
+        if mode == 'grid':
+            line += ' ' * 32
+        if len(deck.cards) == 0 or len(deck.cards) == 1:
+            line += 'No cards face down '
+        elif len(deck.cards) == 2:
+            line += ' 1 card face down  '
+        elif len(str(len(deck.cards) - 1)) == 1:
+            line += str(len(deck.cards) - 1) + ' cards face down  '
+        else:
+            line += str(len(deck.cards) - 1) + ' cards face down '
+        print line
+        ## Players 2 and 4
+        if mode == 'list':
+            rows1 = [player_list[1].print_hand_faces_row(i, cards_per_row)
+                     for i in range(4)]
+            rows3 = [player_list[3].print_hand_faces_row(i, cards_per_row)
+                     for i in range(4)]
+            ner1 = 4
+            ner3 = 4
+            for i in range(4)[::-1]:
+                line = ' ' * 1
+                if rows1[i] == ' ' * 4 * cards_per_row:
+                    ner1 = i
+                    line += rows1[i]
                 else:
-                    line += ' ' * 4
-            '''if i in [2,3]:'''
-            line += ' ' * 60
-            '''elif i == 1:
-                line += ' ' * 14
-                line += table.print_defenses_row()
-                line += ' ' * 14
-            elif i == 0:
-                line += ' ' * 14
-                line += table.print_attacks_row()
-                line += ' ' * 14
-            '''
-            suit = player_list[3].suit_order[i]
-            line += suit_symbols[suit] + ' '
-            for j in range(13):
-                if suit * 13 + j in player_list[3].get_values():
-                    if len(rank_symbols[j + 2] + suit_symbols[suit]) == 2:
-                        line += '%s%s  ' % (rank_symbols[j + 2],
-                                            suit_symbols[suit])
-                    else:
-                        line += '%s%s ' % (rank_symbols[j + 2],
-                                           suit_symbols[suit])
+                    line += rows1[ner1 - 1 - i]
+                line += ' ' * 52
+                if rows3[i] == ' ' * 4 * cards_per_row:
+                    ner3 = i
+                    line += rows3[i]
                 else:
-                    line += ' ' * 4
-            print line[:-1]
-    print
-    line = ' ' * 6
-    if mode == 'grid':
-        line += ' ' * 14
-    if defender != None:
-        if 1 == defender.index:
-            line += ('**Player ' + str(1 + 1) + '**')
+                    line += rows3[ner3 - 1 - i]
+                print line[:-1]
+        elif mode == 'grid':
+            for i in range(4)[::-1]:
+                line = ' ' * 1
+                suit = player_list[1].suit_order[i]
+                line += suit_symbols[suit] + ' '
+                for j in range(13):
+                    if suit * 13 + j in player_list[1].get_values():
+                        if len(rank_symbols[j + 2] + suit_symbols[suit]) == 2:
+                            line += '%s%s  ' % (rank_symbols[j + 2],
+                                                suit_symbols[suit])
+                        else:
+                            line += '%s%s ' % (rank_symbols[j + 2],
+                                               suit_symbols[suit])
+                    else:
+                        line += ' ' * 4
+                '''if i in [2,3]:'''
+                line += ' ' * 60
+                '''elif i == 1:
+                    line += ' ' * 14
+                    line += table.print_defenses_row()
+                    line += ' ' * 14
+                elif i == 0:
+                    line += ' ' * 14
+                    line += table.print_attacks_row()
+                    line += ' ' * 14
+                '''
+                suit = player_list[3].suit_order[i]
+                line += suit_symbols[suit] + ' '
+                for j in range(13):
+                    if suit * 13 + j in player_list[3].get_values():
+                        if len(rank_symbols[j + 2] + suit_symbols[suit]) == 2:
+                            line += '%s%s  ' % (rank_symbols[j + 2],
+                                                suit_symbols[suit])
+                        else:
+                            line += '%s%s ' % (rank_symbols[j + 2],
+                                               suit_symbols[suit])
+                    else:
+                        line += ' ' * 4
+                print line[:-1]
+        print
+        line = ' ' * 6
+        if mode == 'grid':
+            line += ' ' * 14
+        if defender != None:
+            if 1 == defender.index:
+                line += ('**Player ' + str(1 + 1) + '**')
+            else:
+                line += ('  Player ' + str(1 + 1) + '  ')
         else:
             line += ('  Player ' + str(1 + 1) + '  ')
-    else:
-        line += ('  Player ' + str(1 + 1) + '  ')
-    line += ' ' * 21
-    if mode == 'grid':
-        line += ' ' * 38
-    line += table.print_defenses_row()
-    line += ' ' * 19
-    if defender != None:
-        if 3 == defender.index:
-            line += ('**Player ' + str(3 + 1) + '**')
+        line += ' ' * 21
+        if mode == 'grid':
+            line += ' ' * 38
+        line += table.print_defenses_row()
+        line += ' ' * 19
+        if defender != None:
+            if 3 == defender.index:
+                line += ('**Player ' + str(3 + 1) + '**')
+            else:
+                line += ('  Player ' + str(3 + 1) + '  ')
         else:
             line += ('  Player ' + str(3 + 1) + '  ')
-    else:
-        line += ('  Player ' + str(3 + 1) + '  ')
-    line += ' ' * 6
-    print line
-    line = ' ' * 39
-    if mode == 'grid':
-        line += ' ' * 12
-    line += table.print_attacks_row()
-    print line
-    ## Print player 1 hand
-    print '\n' * 3
-    line = ''
-    if mode == 'list':
-        rows0 = [player_list[0].print_hand_faces_row(i, cards_per_row)
-                 for i in range(4)]
-        ner0 = 4
-        for i in range(4)[::-1]:
-            line = ' ' * 39
-            if rows0[i] == ' ' * 4 * cards_per_row:
-                ner0 = i
-                line += rows0[i]
-            else:
-                line += rows0[ner0 - 1 - i]
-            line += ' ' * 10
-            print line[:-1]
-    elif mode == 'grid':
-        for i in range(4)[::-1]:
-            line = ' ' * 57
-            suit = player_list[0].suit_order[i]
-            line += suit_symbols[suit] + ' '
-            for j in range(13):
-                if suit * 13 + j in player_list[0].get_values():
-                    if len(rank_symbols[j + 2] + suit_symbols[suit]) == 2:
-                        line += '%s%s  ' % (rank_symbols[j + 2],
-                                            suit_symbols[suit])
-                    else:
-                        line += '%s%s ' % (rank_symbols[j + 2],
-                                           suit_symbols[suit])
+        line += ' ' * 6
+        print line
+        line = ' ' * 39
+        if mode == 'grid':
+            line += ' ' * 12
+        line += table.print_attacks_row()
+        print line
+        ## Print player 1 hand
+        print '\n' * 3
+        line = ''
+        if mode == 'list':
+            rows0 = [player_list[0].print_hand_faces_row(i, cards_per_row)
+                     for i in range(4)]
+            ner0 = 4
+            for i in range(4)[::-1]:
+                line = ' ' * 39
+                if rows0[i] == ' ' * 4 * cards_per_row:
+                    ner0 = i
+                    line += rows0[i]
                 else:
-                    line += ' ' * 4
-            line += ' ' * 10
-            print line
-    print
-    line = ' ' * 44
-    if mode == 'grid':
-        line += ' ' * 32
-    if defender != None:
-        if 0 == defender.index:
-            line += ('**Player ' + str(0 + 1) + '**')
+                    line += rows0[ner0 - 1 - i]
+                line += ' ' * 10
+                print line[:-1]
+        elif mode == 'grid':
+            for i in range(4)[::-1]:
+                line = ' ' * 57
+                suit = player_list[0].suit_order[i]
+                line += suit_symbols[suit] + ' '
+                for j in range(13):
+                    if suit * 13 + j in player_list[0].get_values():
+                        if len(rank_symbols[j + 2] + suit_symbols[suit]) == 2:
+                            line += '%s%s  ' % (rank_symbols[j + 2],
+                                                suit_symbols[suit])
+                        else:
+                            line += '%s%s ' % (rank_symbols[j + 2],
+                                               suit_symbols[suit])
+                    else:
+                        line += ' ' * 4
+                line += ' ' * 10
+                print line
+        print
+        line = ' ' * 44
+        if mode == 'grid':
+            line += ' ' * 32
+        if defender != None:
+            if 0 == defender.index:
+                line += ('**Player ' + str(0 + 1) + '**')
+            else:
+                line += ('  Player ' + str(0 + 1) + '  ')
         else:
             line += ('  Player ' + str(0 + 1) + '  ')
-    else:
-        line += ('  Player ' + str(0 + 1) + '  ')
-    line += ' ' * 10
-    line += '\n'
-    print line
+        line += ' ' * 10
+        line += '\n'
+        print line
 
 
 if __name__ == "__main__":
@@ -900,47 +937,24 @@ if __name__ == "__main__":
     initial_attacker = None
     player_list = []
     message = ''
-    ## table.initiate_round
-    for i in range(table.player_count):
-        table.player_list.append(Player(i, table.cards_per_player))
-    ## Deal cards to players and find trump suit
-    table.durak.deal_cards(table.player_list, table.deck_length / table.player_count)
-    ##try:
-    ##    table.trump_card = table.durak.cards[0]
-    ##    table.durak.cards.remove(table.trump_card)
-    ##    for card in table.durak.cards:
-    ##        if card.suit != table.trump_card.suit:
-    ##            table.bot_card = card
-    ##            table.durak.cards.remove(card)
-    ##    table.trump = table.trump_card.suit
-    ##    table.bot = table.bot_card.suit
-    ##except IndexError:
-    ##    print 'Deck is empty, restart game.'
-    ## Clean up and sort player hands
-    for i in range(len(table.player_list)):
-        table.player_list[i].sort_hand()
-    ## Board print testing
+    table.start_game()
+    table.start_round()
+    ##Board print testing
     '''for i in range(len(player_list)):
         remove = int(raw_input('Cards to remove from player ' + str(i + 1) + ': '))
         for j in range(remove):
             player_list[i].hand.pop(0)'''
-    print_board(table.durak, table, player_list, cards_per_row, None, print_mode)
+    table.print_board()
     ## table.play_game with special_suit = 3
 
     while True:
         out_list = []
         table.find_initial_attacker(table.player_list, table.initial_attacker)
         table.attacker = table.initial_attacker
-        table.bidding_phase()
+        table.bid_phase()
         table.assign_suit_orders()
-
-        ##for player in table.player_list:
-        ##    player.initial_draw_length = cards_per_player
-
         table.build_decks() ## False means Auto-build the personal decks
-
         table.play_phase()
-
         ## Game over, print name of losing player
         ## table.scoring_phase
         team02_cards_won = table.player_list[0].cards_won + table.player_list[2].cards_won
